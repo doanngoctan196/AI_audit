@@ -1,14 +1,16 @@
-/* ===== CẤU HÌNH AI REVIEW: điền khóa API và prompt của bạn tại đây ===== */
+/* ===== CẤU HÌNH AI REVIEW ===== */
 const AI_CONFIG={
-  provider:'sample',   // mô hình được chọn sẵn trong hộp thoại: 'anthropic' | 'openai' | 'gemini' | 'sample'
+  provider:'anthropic',   // mô hình chọn sẵn trong hộp thoại: 'anthropic' | 'openai' | 'gemini' | 'sample'
+  workerUrl:'https://holy-sun-e5fd.doanngoctan196.workers.dev/',  // Cloudflare Worker giữ khóa API (khóa không nằm trong trình duyệt)
   maxTokens:8000,
-  includeMeta:true,    // gửi kèm nhãn, phần, bắt buộc và bảng mã của từng key
+  timeoutMs:120000,       // thời gian chờ tối đa cho một lần review
+  includeMeta:true,       // gửi kèm nhãn, phần, bắt buộc và bảng mã của từng key
   providers:{
-    anthropic:{label:'Claude (Anthropic)',apiKey:'',model:'',endpoint:''},  // model ví dụ: 'claude-sonnet-4-6'
-    openai:{label:'GPT (OpenAI)',apiKey:'',model:'',endpoint:''},           // model ví dụ: 'gpt-4o'
-    gemini:{label:'Gemini (Google)',apiKey:'',model:'',endpoint:''},        // model ví dụ: 'gemini-2.5-flash' (dùng đúng mã model trong tài khoản của bạn)
-    sample:{label:'Claude qua claude.ai (thử, không cần khóa)'}             // chỉ chạy khi trang mở trong claude.ai
-  },                   // apiKey: khóa của bạn. endpoint (tùy chọn): URL proxy riêng. Không để khóa khi đăng trang công khai
+    anthropic:{label:'Claude (Anthropic)',model:'claude-sonnet-5-5'},  // kiểm tra mã model còn hiệu lực với tài khoản của bạn
+    openai:{label:'GPT (OpenAI)',model:'gpt-4o'},
+    gemini:{label:'Gemini (Google)',model:'gemini-2.5-flash'},
+    sample:{label:'Claude qua claude.ai (thử, không cần worker)'}      // chỉ chạy khi trang mở trong claude.ai
+  },
   prompt:'Bạn là chuyên gia nghiệp vụ hải quan Việt Nam. Hãy đánh giá tính đúng đắn nghiệp vụ của từng cặp [key, value] trong bản nháp tờ khai bên dưới. Chỉ trả về MỘT bảng CSV, không giải thích thêm, với các cột: key,value,danh_gia,ly_do,de_xuat. Cột danh_gia nhận một trong: DUNG, SAI, CAN_XEM_LAI, THIEU. Mỗi cặp [key, value] đúng một dòng.'  // PROMPT MẪU, hãy thay bằng prompt của bạn
 };
 
@@ -719,36 +721,18 @@ $('#pClose').onclick=()=>dlg2.close();
 let aiCSV='',aiBusy=false,aiNote='';
 function resetAI(){aiCSV='';aiNote='';$('#pDl').hidden=true;$('#pOut').hidden=true;$('#pOut').value='';$('#pMsg').textContent=''}
 
-async function callAI(text,prov){
-  const c=AI_CONFIG,p=(c.providers&&c.providers[prov])||{};
-  aiNote='';
-  const need=()=>{
-    if(!p.apiKey)throw new Error('Chưa điền AI_CONFIG.providers.'+prov+'.apiKey');
-    if(!p.model)throw new Error('Chưa điền AI_CONFIG.providers.'+prov+'.model');
-  };
+// Đọc phản hồi gốc mà worker chuyển tiếp từ từng nhà cung cấp
+function parseAIResponse(prov,j){
   if(prov==='anthropic'){
-    need();
-    const r=await fetch(p.endpoint||'https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':p.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:p.model,max_tokens:c.maxTokens,messages:[{role:'user',content:text}]})});
-    if(!r.ok)throw new Error('Anthropic API '+r.status+': '+(await r.text()).slice(0,300));
-    const j=await r.json();
     if(j.stop_reason==='max_tokens')aiNote=' Kết quả có thể bị cắt do hết max_tokens.';
     return (j.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
   }
   if(prov==='openai'){
-    need();
-    const r=await fetch(p.endpoint||'https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+p.apiKey},body:JSON.stringify({model:p.model,messages:[{role:'user',content:text}],max_completion_tokens:c.maxTokens})});
-    if(!r.ok)throw new Error('OpenAI API '+r.status+': '+(await r.text()).slice(0,300));
-    const j=await r.json();
     const ch=(j.choices&&j.choices[0])||{};
     if(ch.finish_reason==='length')aiNote=' Kết quả có thể bị cắt do hết max tokens.';
     return (ch.message&&ch.message.content)||'';
   }
   if(prov==='gemini'){
-    need();
-    const url=p.endpoint||('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(p.model)+':generateContent');
-    const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':p.apiKey},body:JSON.stringify({contents:[{role:'user',parts:[{text:text}]}],generationConfig:{maxOutputTokens:c.maxTokens}})});
-    if(!r.ok)throw new Error('Gemini API '+r.status+': '+(await r.text()).slice(0,300));
-    const j=await r.json();
     const cand=(j.candidates&&j.candidates[0])||{};
     if(cand.finishReason==='MAX_TOKENS')aiNote=' Kết quả có thể bị cắt do hết maxOutputTokens.';
     const out=((cand.content&&cand.content.parts)||[]).map(x=>x.text||'').join('');
@@ -758,11 +742,35 @@ async function callAI(text,prov){
     }
     return out;
   }
-  const sm=window.claude&&window.claude.use?await window.claude.use('sample'):null;
-  if(!sm)throw new Error('Chế độ sample chỉ chạy khi trang được mở trong claude.ai');
-  const r=await sm(text,{modelTier:'default',cache:false});
-  if(r.truncated)aiNote=' Kết quả có thể bị cắt ngắn.';
-  return r.text;
+  throw new Error('Nhà cung cấp không được hỗ trợ: '+prov);
+}
+
+async function callAI(text,prov){
+  const c=AI_CONFIG,p=(c.providers&&c.providers[prov])||{};
+  aiNote='';
+  if(prov==='sample'){
+    const sm=window.claude&&window.claude.use?await window.claude.use('sample'):null;
+    if(!sm)throw new Error('Chế độ sample chỉ chạy khi trang được mở trong claude.ai');
+    const r=await sm(text,{modelTier:'default',cache:false});
+    if(r.truncated)aiNote=' Kết quả có thể bị cắt ngắn.';
+    return r.text;
+  }
+  if(!c.workerUrl)throw new Error('Chưa điền AI_CONFIG.workerUrl');
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),c.timeoutMs||120000);
+  let r,raw;
+  try{
+    r=await fetch(c.workerUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:text,prov:prov,model:p.model||'',maxTokens:c.maxTokens}),signal:ctrl.signal});
+    raw=await r.text();
+  }catch(e){
+    if(e&&e.name==='AbortError')throw new Error('Hết thời gian chờ worker ('+Math.round((c.timeoutMs||120000)/1000)+' giây)');
+    throw e;
+  }finally{clearTimeout(timer)}
+  let j=null;
+  try{j=JSON.parse(raw)}catch(e){}
+  const em=j&&j.error?(typeof j.error==='string'?j.error:(j.error.message||JSON.stringify(j.error))):'';
+  if(!r.ok||(em&&!j.content&&!j.choices&&!j.candidates))throw new Error(em||('Worker trả về '+r.status+': '+String(raw).slice(0,200)));
+  if(!j)throw new Error('Worker trả về dữ liệu không phải JSON: '+String(raw).slice(0,200));
+  return parseAIResponse(prov,j);
 }
 
 function extractCSV(raw){
@@ -857,7 +865,7 @@ async function runAIReview(){
     }
   }catch(e){
     const net=e instanceof TypeError;
-    msg.textContent='Lỗi gọi AI: '+(e&&e.message?e.message:e)+(net?'. Trình duyệt đã chặn kết nối (CORS hoặc chính sách bảo mật của trang đã đăng). Hãy chạy file trên máy hoặc máy chủ của bạn, dùng proxy, hoặc đặt provider là sample.':'');
+    msg.textContent='Lỗi gọi AI: '+(e&&e.message?e.message:e)+(net?'. Không kết nối được tới worker. Kiểm tra AI_CONFIG.workerUrl, mạng, và Access-Control-Allow-Origin của worker phải khớp địa chỉ trang đang mở. Trang đã đăng trong claude.ai không gọi được worker, hãy mở bản chạy trên GitHub Pages của bạn.':'');
   }finally{aiBusy=false;btn.disabled=false;btn.textContent=old}
 }
 
