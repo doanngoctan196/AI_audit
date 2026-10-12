@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Soát nháp tờ khai hải quan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brandbox">
+    <h1>Soát nháp tờ khai hải quan</h1>
+    <span class="sub">Bản nháp để rà soát trước khi khai chính thức trên VNACCS/VCIS</span>
+  </div>
+  <div class="seg" role="group" aria-label="Loại tờ khai">
+    <button type="button" id="m-IDA" aria-pressed="true">Nhập khẩu (IDA)</button>
+    <button type="button" id="m-EDA" aria-pressed="false">Xuất khẩu (EDA)</button>
+  </div>
+  <button class="btn primary" id="bCheck" type="button">Soát lỗi</button>
+  <button class="btn" id="bSample" type="button">Dữ liệu mẫu</button>
+  <button class="btn" id="bPairs" type="button">Dữ liệu review</button>
+  <button class="btn danger" id="bReset" type="button">Xóa bản nháp</button>
+</header>
+
+<div class="layout">
+  <nav class="side" id="nav" aria-label="Các phần của tờ khai"></nav>
+  <main id="main"></main>
+</div>
+
+<dialog id="dlg2">
+  <h2 style="margin:0 0 6px;font-size:17px">Dữ liệu review dạng [key, value]</h2>
+  <p id="pInfo" style="margin:0 0 10px;color:var(--muted);font-size:13.5px"></p>
+  <div class="row" style="margin:0 0 8px"><label for="pMode" style="font-size:13px;font-weight:600">Phạm vi</label>
+    <select id="pMode" style="background:var(--field);border:1px solid var(--line);border-radius:7px;padding:6px 8px"><option value="IDA">Nhập khẩu (IDA)</option><option value="EDA">Xuất khẩu (EDA)</option><option value="">Tất cả</option></select></div>
+  <div class="row" style="margin:0 0 8px"><label for="pProv" style="font-size:13px;font-weight:600">Mô hình AI</label>
+    <select id="pProv" style="background:var(--field);border:1px solid var(--line);border-radius:7px;padding:6px 8px"></select></div>
+  <textarea id="pBox" readonly spellcheck="false" aria-label="Danh sách cặp key, value"></textarea>
+  <textarea id="pOut" readonly hidden spellcheck="false" aria-label="Kết quả đánh giá của AI" style="margin-top:10px;min-height:160px"></textarea>
+  <div class="row">
+    <button class="btn primary" id="pAI" type="button">AI review</button>
+    <button class="btn" id="pDl" type="button" hidden>Tải CSV đánh giá</button>
+    <button class="btn" id="pClose" type="button" style="margin-left:auto">Đóng</button>
+  </div>
+  <div class="msg" id="pMsg" role="status"></div>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
