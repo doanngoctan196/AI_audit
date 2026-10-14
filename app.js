@@ -21,7 +21,7 @@ const AI_CONFIG = {
     },
     gemini: {
       label: 'Gemini (Google)',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
     },
     sample: {
       label: 'Claude qua claude.ai (thử, không cần worker)',
