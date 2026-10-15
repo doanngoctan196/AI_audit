@@ -19,7 +19,9 @@
     <button type="button" id="m-IDA" aria-pressed="true">Nhập khẩu (IDA)</button>
     <button type="button" id="m-EDA" aria-pressed="false">Xuất khẩu (EDA)</button>
   </div>
+  <button class="btn" id="bImport" type="button">Import chứng từ</button>
   <button class="btn primary" id="bCheck" type="button">Soát lỗi</button>
+  <button class="btn" id="bPdf" type="button">Xuất PDF</button>
   <button class="btn" id="bSample" type="button">Dữ liệu mẫu</button>
   <button class="btn" id="bPairs" type="button">Dữ liệu review</button>
   <button class="btn danger" id="bReset" type="button">Xóa bản nháp</button>
@@ -45,6 +47,28 @@
     <button class="btn" id="pClose" type="button" style="margin-left:auto">Đóng</button>
   </div>
   <div class="msg" id="pMsg" role="status"></div>
+</dialog>
+<dialog id="dlg3">
+  <h2 style="margin:0 0 6px;font-size:17px">Import chứng từ và AI tự điền form</h2>
+  <p class="notice" style="margin:0 0 10px">Khi bấm phân tích, nội dung các file được gửi qua Cloudflare Worker tới nhà cung cấp AI bạn chọn. Chỉ dùng chứng từ thật khi đã được phép gửi cho bên thứ ba. Kết quả của AI có thể sai, hãy đối chiếu với chứng từ gốc.</p>
+  <label class="drop" id="iDrop" for="iFileIn">
+    <b>Kéo thả nhiều file vào đây hoặc bấm để chọn</b>
+    <span>PDF, Excel (.xlsx, .xls, .csv), Word (.docx), .txt, ảnh JPG/PNG. Tối đa 15 file, mỗi file 15 MB. File .doc cũ cần lưu thành .docx hoặc PDF.</span>
+    <input type="file" id="iFileIn" multiple accept=".pdf,.xlsx,.xls,.csv,.docx,.txt,.jpg,.jpeg,.png">
+  </label>
+  <div id="iList"></div>
+  <div class="row" style="margin:10px 0 0">
+    <label for="iProv" style="font-size:13px;font-weight:600">Mô hình AI</label>
+    <select id="iProv" style="background:var(--field);border:1px solid var(--line);border-radius:7px;padding:6px 8px"></select>
+    <label class="chk"><input type="checkbox" id="iAttach" checked>Đồng thời đính kèm các file này vào tờ khai</label>
+  </div>
+  <div class="row">
+    <button class="btn primary" id="iRun" type="button">Phân tích bằng AI và điền form</button>
+    <button class="btn" id="iClear" type="button">Xóa danh sách</button>
+    <button class="btn" id="iClose" type="button" style="margin-left:auto">Đóng</button>
+  </div>
+  <div class="msg" id="iMsg" role="status"></div>
+  <div id="iResult"></div>
 </dialog>
 <div class="toast" id="toast" role="status"></div>
 
