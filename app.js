@@ -487,12 +487,12 @@ function fieldBox(fd,id,get,set){
   const aiMark=(st().ai||{})[id];
   if(aiMark){
     box.classList.add('aifill');
-    box.firstChild.append(h('span',{class:'aibadge',title:'AI điền'+(aiMark.nguon?' từ: '+aiMark.nguon:'')+(aiMark.tc?' (độ tin cậy: '+tcLabel(aiMark.tc)+')':'')},'AI'));
+    box.title='AI điền'+(aiMark.nguon?' từ: '+aiMark.nguon:'')+(aiMark.tc?' (độ tin cậy: '+tcLabel(aiMark.tc)+')':'');
   }
   const set2=v=>{
     set(v);
     const a=st().ai;
-    if(a&&a[id]){delete a[id];box.classList.remove('aifill');const b=box.querySelector('.aibadge');if(b)b.remove()}
+    if(a&&a[id]){delete a[id];box.classList.remove('aifill');box.removeAttribute('title')}
   };
   box.append(control(fd,id,get,set2));
   if(fd.hint)box.append(h('div',{class:'hint'},fd.hint));
@@ -917,7 +917,7 @@ function renderImpResult(){
   const P=IMP.plan;if(!P)return;
   const nConf=P.conf.length+P.lineConf.length;
   host.append(h('p',{style:'margin:14px 0 4px;font-weight:600'},'Đã tự điền '+P.auto.length+' trường'+(P.lineAuto.length?' và '+P.lineAuto.length+' dòng hàng':'')+'. '+(nConf?nConf+' mục cần bạn xác nhận.':'Không có mục cần xác nhận.')));
-  host.append(h('p',{style:'margin:0 0 8px;font-size:13px;color:var(--muted)'},'Các ô do AI điền có nhãn “AI” và nền tím nhạt trên form; nhãn mất khi bạn sửa ô đó. Hãy đối chiếu với chứng từ gốc.'));
+  host.append(h('p',{style:'margin:0 0 8px;font-size:13px;color:var(--muted)'},'Các ô do AI điền có nền tím nhạt trên form (rê chuột để xem nguồn trích); màu này mất khi bạn sửa ô đó. Hãy đối chiếu với chứng từ gốc.'));
   const table=(head,rows)=>h('div',{class:'scroll',style:'margin-bottom:12px'},h('table',{class:'t'},h('thead',{},h('tr',{},head.map(x=>h('th',{},x)))),h('tbody',{},rows)));
   const sub=t=>h('h3',{style:'margin:12px 0 6px;font-size:14px'},t);
   if(P.auto.length||P.lineAuto.length){
@@ -1265,7 +1265,7 @@ function parseAIResponse(prov,j){
     const out=((cand.content&&cand.content.parts)||[]).map(x=>x.text||'').join('');
     if(!out){
       const why=(j.promptFeedback&&j.promptFeedback.blockReason)||cand.finishReason||'rỗng';
-      throw new Error('Gemini không trả nội dung ('+why+')'+(why==='MAX_TOKENS'?'. Có thể Gemini đã dùng hết token để suy nghĩ: tăng AI_CONFIG.maxTokens (tối đa 16000) hoặc đặt biến GEMINI_THINKING_BUDGET trên worker':''));
+      throw new Error('Gemini không trả nội dung ('+why+')'+(why==='MAX_TOKENS'?'. Có thể Gemini đã dùng hết token để suy nghĩ: tăng AI_CONFIG.maxTokens (tối đa 16000) hoặc giảm mức suy nghĩ trên worker (Gemini 3.x: GEMINI_THINKING_LEVEL=low; Gemini 2.5: GEMINI_THINKING_BUDGET)':''));
     }
     return out;
   }
