@@ -11,7 +11,7 @@ const AI_CONFIG={
     gemini:{label:'Gemini (Google)',model:'gemini-3.8-flash'},
     sample:{label:'Claude qua claude.ai (thử, không cần worker)'}      // chỉ chạy khi trang mở trong claude.ai
   },
-  promptFiles:{review:'prompts/review.txt',import:'prompts/import.txt'}  // nội dung prompt nằm trong các file này, sửa trực tiếp, không cần sửa app.js
+  promptFiles:{review:'prompts/review.md',import:'prompts/import.md'}  // nội dung prompt nằm trong các file này, sửa trực tiếp, không cần sửa app.js
 };
 
 /* ---------- tiện ích ---------- */
@@ -169,18 +169,41 @@ const FMT={
 };
 
 /* ---------- trạng thái ---------- */
+// Cách lưu bản nháp trong trình duyệt:
+//  'session': giữ khi tải lại trang, TỰ MẤT khi đóng tab hoặc trình duyệt (sessionStorage)
+//  'none'   : không lưu gì, tải lại trang là mất hết (chỉ giữ trong bộ nhớ của trang)
+// Không dùng localStorage hay IndexedDB nên không để lại dữ liệu trên đĩa sau khi đóng trình duyệt.
+const HQ_PERSIST='session';
+const Mem={};
+const Store={
+  get(k){
+    if(HQ_PERSIST==='session'){try{return sessionStorage.getItem(k)}catch(e){}}
+    return Object.prototype.hasOwnProperty.call(Mem,k)?Mem[k]:null;
+  },
+  set(k,v){
+    if(HQ_PERSIST==='session'){try{sessionStorage.setItem(k,v);return}catch(e){}}
+    Mem[k]=v;
+  },
+  del(k){try{sessionStorage.removeItem(k)}catch(e){}delete Mem[k]}
+};
+// Xóa dữ liệu mà các phiên bản trước của trang đã ghi xuống localStorage/IndexedDB của trình duyệt
+function purgeLegacyStorage(){
+  ['hq-draft-v1','hq-review-pairs-v1','hq-review-meta-v1'].forEach(k=>{try{localStorage.removeItem(k)}catch(e){}});
+  try{if(window.indexedDB&&indexedDB.deleteDatabase)indexedDB.deleteDatabase('hq-draft-files')}catch(e){}
+}
+purgeLegacyStorage();
 const KEY='hq-draft-v1';
 const blank=()=>({f:{dv_tl:'KGM',mt:'USD'},lines:[{}],chk:{},att:{},files:[],ai:{}});
 let mode='IDA';
 let store={IDA:blank(),EDA:blank()};
 let showAll=false;
 let SEC=build(mode);
-try{const raw=localStorage.getItem(KEY);if(raw){const o=JSON.parse(raw);if(o&&o.store){store={...store,...o.store};mode=o.mode||'IDA';SEC=build(mode)}}}catch(e){}
+try{const raw=Store.get(KEY);if(raw){const o=JSON.parse(raw);if(o&&o.store){store={...store,...o.store};mode=o.mode||'IDA';SEC=build(mode)}}}catch(e){}
 const st=()=>store[mode];
 let saveT;
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{syncStoreFromForm();try{localStorage.setItem(KEY,JSON.stringify({mode,store}))}catch(e){}syncPairs()},300)}
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{syncStoreFromForm();try{Store.set(KEY,JSON.stringify({mode,store}))}catch(e){}syncPairs()},300)}
 
-/* ---------- lưu dữ liệu review dạng [key, value] vào localStorage ---------- */
+/* ---------- lưu dữ liệu review dạng [key, value] (cùng cách lưu như bản nháp) ---------- */
 const PAIRS_KEY='hq-review-pairs-v1',META_KEY='hq-review-meta-v1',NL=String.fromCharCode(10),QT=String.fromCharCode(34);
 function pairsFor(m){
   const keep=mode;mode=m;
@@ -240,7 +263,7 @@ function syncPairs(){
   try{a=pairsFor('IDA');b=pairsFor('EDA')}catch(e){console.error(e);return}
   memPairs=a.out.concat(b.out);
   memMeta={updated:new Date().toISOString(),activeMode:mode,fields:Object.assign({},a.meta,b.meta)};
-  try{localStorage.setItem(PAIRS_KEY,JSON.stringify(memPairs));localStorage.setItem(META_KEY,JSON.stringify(memMeta))}catch(e){}
+  try{Store.set(PAIRS_KEY,JSON.stringify(memPairs));Store.set(META_KEY,JSON.stringify(memMeta))}catch(e){}
   try{window.dispatchEvent(new CustomEvent('hq-review-updated',{detail:{count:memPairs.length}}))}catch(e){}
 }
 function getPairs(m){const arr=memPairs;return m?arr.filter(p=>p[0].indexOf(m+'.')===0):arr.slice()}
@@ -324,30 +347,12 @@ function validate(){
 
 /* ---------- tải chứng từ đính kèm ---------- */
 const MAX_FILE=10*1024*1024,MAX_FILES=30,EXT_OK=['pdf','jpg','jpeg','png','xls','xlsx','doc','docx','xml'];
-const fileCache=new Map();   // id -> File (trong bộ nhớ)
-const FileDB={               // lưu nội dung tệp bền trong IndexedDB của trình duyệt
-  db:null,
-  open(){
-    return new Promise((res,rej)=>{
-      if(this.db)return res(this.db);
-      try{
-        const rq=indexedDB.open('hq-draft-files',1);
-        rq.onupgradeneeded=()=>rq.result.createObjectStore('files');
-        rq.onsuccess=()=>{this.db=rq.result;res(this.db)};
-        rq.onerror=()=>rej(rq.error);
-      }catch(e){rej(e)}
-    });
-  },
-  async tx(mode,fn){
-    const db=await this.open();
-    return new Promise((res,rej)=>{
-      const t=db.transaction('files',mode),rq=fn(t.objectStore('files'));
-      t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);
-    });
-  },
-  put(id,blob){return this.tx('readwrite',o=>o.put(blob,id))},
-  get(id){return this.tx('readonly',o=>o.get(id))},
-  del(id){return this.tx('readwrite',o=>o.delete(id))}
+const fileCache=new Map();   // id -> File (chỉ trong bộ nhớ của trang)
+// File chứng từ chỉ giữ trong bộ nhớ của trang (không ghi xuống đĩa): tải lại trang hoặc đóng trình duyệt là mất.
+const FileDB={
+  put(id,blob){return Promise.resolve()},
+  get(id){return Promise.resolve(fileCache.get(id))},
+  del(id){return Promise.resolve()}
 };
 function fmtSize(b){return b<1024?b+' B':b<1048576?fmtN(b/1024,0)+' KB':fmtN(b/1048576,1)+' MB'}
 function guessType(name){
@@ -1226,11 +1231,34 @@ $('#m-IDA').onclick=()=>setMode('IDA');
 $('#m-EDA').onclick=()=>setMode('EDA');
 $('#bCheck').onclick=()=>{showAll=true;refresh();go('sec-review')};
 $('#bSample').onclick=sample;
+function wipeAllData(){
+  clearTimeout(saveT);
+  // 1) bộ nhớ trong trang: bản nháp IDA và EDA, file chứng từ, kết quả AI, danh sách import
+  store={IDA:blank(),EDA:blank()};
+  showAll=false;
+  fileCache.clear();
+  memPairs=[];memMeta={fields:{}};
+  aiCSV='';aiNote='';
+  IMP.files=[];IMP.undo=null;IMP.plan=null;
+  // 2) bộ nhớ của trình duyệt (kể cả dữ liệu cũ từ các phiên bản trước)
+  [KEY,PAIRS_KEY,META_KEY].forEach(k=>Store.del(k));
+  purgeLegacyStorage();
+  // 3) các hộp thoại và ô nhập
+  ['#pBox','#pOut','#iFileIn'].forEach(sel=>{const e=$(sel);if(e)e.value=''});
+  ['#iList','#iResult'].forEach(sel=>{const e=$(sel);if(e)e.innerHTML=''});
+  ['#pMsg','#iMsg'].forEach(sel=>{const e=$(sel);if(e)e.textContent=''});
+  const dl=$('#pDl');if(dl)dl.hidden=true;
+  const po=$('#pOut');if(po)po.hidden=true;
+  // 4) dựng lại form trống
+  render();
+  try{window.scrollTo(0,0)}catch(e){}
+}
 let resetArm=0;
 $('#bReset').onclick=e=>{
-  if(!resetArm){resetArm=1;e.target.textContent='Bấm lần nữa để xóa';setTimeout(()=>{resetArm=0;e.target.textContent='Xóa bản nháp'},3000);return}
-  (st().files||[]).forEach(x=>{fileCache.delete(x.id);FileDB.del(x.id).catch(()=>{})});
-  store[mode]=blank();showAll=false;resetArm=0;e.target.textContent='Xóa bản nháp';render();save();toast('Đã xóa bản nháp '+(mode==='IDA'?'nhập khẩu':'xuất khẩu'));
+  if(!resetArm){resetArm=1;e.target.textContent='Bấm lần nữa để xóa tất cả';setTimeout(()=>{resetArm=0;e.target.textContent='Xóa toàn bộ dữ liệu'},3000);return}
+  resetArm=0;e.target.textContent='Xóa toàn bộ dữ liệu';
+  wipeAllData();
+  toast('Đã xóa toàn bộ dữ liệu: form, bản nháp, chứng từ và dữ liệu lưu trong trình duyệt',3500);
 };
 /* ---------- hộp thoại dữ liệu review ---------- */
 const dlg2=$('#dlg2');
@@ -1238,7 +1266,7 @@ function showPairs(){
   syncPairs();
   const m=$('#pMode').value,arr=getPairs(m);
   $('#pBox').value='['+NL+arr.map(p=>'  '+JSON.stringify(p)).join(','+NL)+NL+']';
-  $('#pInfo').textContent='Đã lưu '+getPairs().length+' cặp [key, value] của cả IDA và EDA vào localStorage, khóa “'+PAIRS_KEY+'”. Nhãn, phần và bảng mã của từng key nằm ở khóa “'+META_KEY+'”. Đang hiển thị '+arr.length+' cặp.';
+  $('#pInfo').textContent='Đã lưu '+getPairs().length+' cặp [key, value] của cả IDA và EDA vào '+(HQ_PERSIST==='session'?'sessionStorage (tự xóa khi đóng tab hoặc trình duyệt)':'bộ nhớ của trang (không ghi xuống đĩa)')+', khóa “'+PAIRS_KEY+'”. Nhãn, phần và bảng mã của từng key nằm ở khóa “'+META_KEY+'”. Đang hiển thị '+arr.length+' cặp.';
   $('#pMsg').textContent='';
 }
 $('#bPairs').onclick=()=>{$('#pMode').value=mode;showPairs();resetAI();dlg2.showModal()};
