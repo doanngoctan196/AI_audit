@@ -24,8 +24,8 @@ Trang web tĩnh để lập **bản nháp** tờ khai hải quan nhập khẩu (
  
 Luồng nghiệp vụ:
  
-![Luồng nghiệp vụ](luong-nghiep-vu.png)
+![Luồng nghiệp vụ](/workflows/luong-nghiep-vu.png)
  
 Luồng dữ liệu:
  
-![Luồng dữ liệu](luong-du-lieu.png)
+![Luồng dữ liệu](/workflows/luong-du-lieu.png)
