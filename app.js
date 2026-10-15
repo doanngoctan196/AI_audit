@@ -8,7 +8,7 @@ const AI_CONFIG={
   providers:{
     anthropic:{label:'Claude (Anthropic)',model:'claude-sonnet-5-5'},  // kiểm tra mã model còn hiệu lực với tài khoản của bạn
     openai:{label:'GPT (OpenAI)',model:'gpt-4o'},
-    gemini:{label:'Gemini (Google)',model:'gemini-2.5-flash'},
+    gemini:{label:'Gemini (Google)',model:'gemini-3.8-flash'},
     sample:{label:'Claude qua claude.ai (thử, không cần worker)'}      // chỉ chạy khi trang mở trong claude.ai
   },
   promptFiles:{review:'prompts/review.txt',import:'prompts/import.txt'}  // nội dung prompt nằm trong các file này, sửa trực tiếp, không cần sửa app.js
