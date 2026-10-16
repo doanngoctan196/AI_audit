@@ -275,7 +275,8 @@ window.hqReview={PAIRS_KEY,META_KEY,getPairs,getMeta,toCSV,sync:syncPairs,getFil
 /* ---------- tính toán ---------- */
 function calc(){
   const s=st(),f=s.f,imp=mode==='IDA';
-  const ty=num(f.ty_gia);
+  let ty=num(f.ty_gia);
+  if(!ty&&String(f.mt||'').trim().toUpperCase()==='VND')ty=1;   // hóa đơn bằng VND thì không cần tỷ giá
   let tot=0;
   s.lines.forEach(l=>{l.tt=Math.round(num(l.sl)*num(l.dg)*100)/100;tot+=l.tt});
   tot=Math.round(tot*100)/100;
@@ -289,7 +290,7 @@ function calc(){
     l.t2=imp?Math.round((b+l.t1)*num(l.vat)/100):0;
     base+=b;s1+=l.t1;s2+=l.t2;
   });
-  return {tot,fees,base,s1,s2};
+  return {tot,fees,base,s1,s2,ty};
 }
 
 /* ---------- soát lỗi ---------- */
@@ -359,7 +360,7 @@ function guessType(name){
   const n=noDiacritics(name).toLowerCase().replace(/\.[a-z0-9]+$/,'');
   const t=n.split(/[^a-z0-9]+/).filter(Boolean);
   if(n.includes('hoa don')||t.includes('invoice')||t.includes('inv'))return 0;
-  if(n.includes('packing')||t.includes('pl')||t.includes('pkl'))return 1;
+  if(n.includes('packing')||n.includes('pklist')||n.includes('packlist')||t.some(x=>x==='pl'||x==='pkl'||x==='plist'||x==='pklist'||x==='packlist'))return 1;
   if(n.includes('van don')||n.includes('lading')||t.includes('bl')||t.includes('awb')||t.includes('bol'))return 2;
   if(n.includes('hop dong')||n.includes('contract'))return 3;
   if(t.includes('co')||n.includes('xuat xu')||n.includes('origin'))return 4;
@@ -372,7 +373,7 @@ function tickAtt(k){
   st().att[k]=true;
   const el=document.getElementById('att-'+k);if(el)el.checked=true;
 }
-function addFiles(list){
+function addFiles(list,hint){
   const s=st();s.files=s.files||[];
   const msgs=[];
   Array.from(list||[]).forEach(f=>{
@@ -381,7 +382,7 @@ function addFiles(list){
     if(f.size>MAX_FILE){msgs.push('Bỏ qua “'+f.name+'”: vượt '+fmtSize(MAX_FILE));return}
     if(s.files.some(x=>x.name===f.name&&x.size===f.size)){msgs.push('Bỏ qua “'+f.name+'”: đã có trong danh sách');return}
     if(s.files.length>=MAX_FILES){msgs.push('Đã đủ '+MAX_FILES+' tệp');return}
-    const id='f'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),t=guessType(f.name);
+    const id='f'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),t=(hint&&hint[f.name]!=null)?hint[f.name]:guessType(f.name);
     s.files.push({id:id,name:f.name,size:f.size,mime:f.type||'',type:t});
     fileCache.set(id,f);
     FileDB.put(id,f).catch(()=>fileMsg('Không lưu bền được nội dung tệp trong trình duyệt. Tệp chỉ được giữ đến khi tải lại trang.'));
@@ -570,17 +571,26 @@ function refresh(){
   s.lines.forEach((l,i)=>{
     setVal('l-'+i+'-tt',l.tt?fmtN(l.tt,2):'');
     setVal('l-'+i+'-t1',l.base?fmtN(l.t1):'');
+    {const need=!c.ty&&c.tot>0;['t1','t2'].forEach(k=>{const e=document.getElementById('l-'+i+'-'+k);if(e)e.placeholder=need?'Cần tỷ giá':''})}
     if(imp)setVal('l-'+i+'-t2',l.base?fmtN(l.t2):'');
   });
   const T=$('#totals');
   if(T){
     T.innerHTML='';
+    const noRate=!c.ty&&c.tot>0;
+    if(noRate){
+      T.append(h('div',{class:'tot note'},
+        h('b',{},'Chưa tính được thuế: thiếu tỷ giá tính thuế'),
+        h('small',{},'Trị giá tính thuế và các khoản thuế đang để trống vì chưa nhập “Tỷ giá tính thuế” (VND / 1 đơn vị ngoại tệ) ở phần Hóa đơn và thanh toán. Nếu hóa đơn bằng VND, hãy chọn mã đồng tiền VND, hệ thống sẽ tự dùng tỷ giá 1.'),
+        h('button',{class:'btn small',type:'button',onclick:()=>jump('f-ty_gia')},'Đi tới ô tỷ giá')));
+    }
+    const money=v=>noRate?'Chưa tính':fmtN(v);
     const add=(a,b,big)=>T.append(h('div',{class:'tot'+(big?' big':'')},h('small',{},a),h('b',{},b)));
     add('Tổng trị giá hóa đơn',fmtN(c.tot,2)+' '+(s.f.mt||''));
-    add(imp?'Tổng trị giá tính thuế (VND)':'Tổng trị giá tính thuế XK (VND)',fmtN(c.base));
-    add(imp?'Thuế nhập khẩu tạm tính (VND)':'Thuế xuất khẩu tạm tính (VND)',fmtN(c.s1));
-    if(imp)add('Thuế GTGT tạm tính (VND)',fmtN(c.s2));
-    add('Tổng thuế tạm tính (VND)',fmtN(c.s1+c.s2),true);
+    add(imp?'Tổng trị giá tính thuế (VND)':'Tổng trị giá tính thuế XK (VND)',money(c.base));
+    add(imp?'Thuế nhập khẩu tạm tính (VND)':'Thuế xuất khẩu tạm tính (VND)',money(c.s1));
+    if(imp)add('Thuế GTGT tạm tính (VND)',money(c.s2));
+    add('Tổng thuế tạm tính (VND)',money(c.s1+c.s2),true);
   }
   const issues=validate();
   window._issues=issues;
@@ -694,6 +704,7 @@ function renderReview(issues,c){
 const IMP={files:[],busy:false,undo:null,plan:null};
 const IMP_EXT=['pdf','xlsx','xls','csv','docx','txt','jpg','jpeg','png'];
 const IMP_MAX_FILES=15,IMP_MAX_BYTES=15*1024*1024,IMP_MAX_TEXT_FILE=40000,IMP_MAX_TEXT_TOTAL=120000,IMP_MAX_ATTACH=10*1024*1024;
+const IMP_SHEET_MAX=100,IMP_SHEET_HEAD=40,IMP_SHEET_TAIL=15;   // sheet packing list dài hơn 100 dòng: giữ 40 dòng đầu và 15 dòng cuối
 const IMP_DEFAULTS={dv_tl:'KGM',mt:'USD'};
 const IMP_MIME={pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png'};
 const IMP_EXCL=['so_tk_dau','ma_hq','ngay_dk','ngay_xk','ghi_chu'];
@@ -729,6 +740,20 @@ async function toBase64(f){
   return btoa(s);
 }
 
+// Nhận diện loại chứng từ từ tên sheet, tên file và tiêu đề ở đầu dòng trong nội dung (một file có thể chứa nhiều loại)
+function detectDocTypes(x){
+  const set=[];
+  const add=i=>{if(i!==7&&i>=0&&set.indexOf(i)<0)set.push(i)};
+  (x.sheets||[]).forEach(n=>add(guessType(n)));
+  add(guessType(x.name));
+  const t=String(x.text||'').toUpperCase();
+  if(/^[\s,"]*(COMMERCIAL\s+)?INVOICE[\s,"]*$/m.test(t)||/^[\s,"]*COMMERCIAL\s+INVOICE/m.test(t))add(0);
+  if(/^[\s,"]*PACKING\s+LIST/m.test(t))add(1);
+  if(/^[\s,"]*(BILL\s+OF\s+LADING|SEA\s+WAYBILL)/m.test(t))add(2);
+  if(/^[\s,"]*CERTIFICATE\s+OF\s+ORIGIN/m.test(t))add(4);
+  return set.sort((a,b)=>a-b);
+}
+
 async function parseImportFile(x){
   const e=x.ext;
   try{
@@ -736,8 +761,20 @@ async function parseImportFile(x){
     else if(e==='xlsx'||e==='xls'){
       const X=await loadLib('xlsx');
       const wb=X.read(await readBuf(x.file),{type:'array'});
-      const out=[];
-      wb.SheetNames.forEach(n=>{const csv=X.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false});if(csv.trim())out.push('### Sheet: '+n+NL+csv)});
+      const out=[];x.sheets=[];
+      wb.SheetNames.forEach(n=>{
+        let csv=X.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false});
+        if(!csv.trim())return;
+        x.sheets.push(n);
+        const ln=csv.split(NL);
+        // Sheet packing list rất dài: giữ phần đầu và phần cuối (gồm dòng tổng), bỏ bớt dòng chi tiết ở giữa
+        if(ln.length>IMP_SHEET_MAX&&/pk|pack|(^|[^a-z])pl([^a-z]|$)/i.test(n)){
+          const cut=ln.length-IMP_SHEET_HEAD-IMP_SHEET_TAIL;
+          csv=ln.slice(0,IMP_SHEET_HEAD).concat(['... (đã bỏ '+cut+' dòng chi tiết ở giữa, giữ '+IMP_SHEET_HEAD+' dòng đầu và '+IMP_SHEET_TAIL+' dòng cuối gồm dòng tổng)'],ln.slice(-IMP_SHEET_TAIL)).join(NL);
+          x.note=(x.note||'')+' (sheet '+n+' đã rút gọn)';
+        }
+        out.push('### Sheet: '+n+NL+csv);
+      });
       x.text=out.join(NL+NL);x.kind='text';
     }else if(e==='docx'){
       const m=await loadLib('mammoth');
@@ -758,7 +795,12 @@ async function parseImportFile(x){
     }else{x.kind='attach';x.mime=IMP_MIME[e];x.status='Ảnh: gửi nguyên file cho AI'}
     if(x.kind==='text'){
       if(!x.text.trim()){x.kind='error';x.status='File không có nội dung văn bản đọc được'}
-      else x.status='Đã đọc '+fmtN(x.text.length)+' ký tự'+(x.note||'');
+      else{
+        x.hints=detectDocTypes(x);
+        x.status='Đã đọc '+fmtN(x.text.length)+' ký tự'
+          +(x.sheets&&x.sheets.length>1?', '+x.sheets.length+' sheet ('+x.sheets.join(', ')+')':'')+(x.note||'')
+          +(x.hints.length?'. Nhận diện: '+x.hints.map(i=>ATT[i]).join(', '):'');
+      }
     }
   }catch(err){x.kind='error';x.status='Lỗi đọc file: '+(err&&err.message?err.message:err)}
 }
@@ -903,10 +945,11 @@ function applyLines(list,replace){
 }
 function applyDocs(docs){
   const s=st();
+  const seen={};
   docs.forEach(d=>{
     tickAtt(d.idx);
     const f=(s.files||[]).find(x=>x.name===d.file);
-    if(f)f.type=d.idx;
+    if(f&&!seen[d.file]){f.type=d.idx;seen[d.file]=1}   // loại đầu tiên là loại chính của file
   });
 }
 function snapshotState(){const s=st();return JSON.stringify({f:s.f,lines:s.lines,att:s.att,ai:s.ai||{},files:s.files||[]})}
@@ -923,6 +966,10 @@ function renderImpResult(){
   const nConf=P.conf.length+P.lineConf.length;
   host.append(h('p',{style:'margin:14px 0 4px;font-weight:600'},'Đã tự điền '+P.auto.length+' trường'+(P.lineAuto.length?' và '+P.lineAuto.length+' dòng hàng':'')+'. '+(nConf?nConf+' mục cần bạn xác nhận.':'Không có mục cần xác nhận.')));
   host.append(h('p',{style:'margin:0 0 8px;font-size:13px;color:var(--muted)'},'Các ô do AI điền có nền tím nhạt trên form (rê chuột để xem nguồn trích); màu này mất khi bạn sửa ô đó. Hãy đối chiếu với chứng từ gốc.'));
+  if(P.docs.length){
+    const byFile={};P.docs.forEach(d=>{(byFile[d.file]=byFile[d.file]||[]).push(ATT[d.idx])});
+    host.append(h('p',{style:'margin:0 0 8px;font-size:13px'},h('b',{},'Loại chứng từ đã nhận diện và tick: '),Object.keys(byFile).map(f=>f+' → '+byFile[f].join(' + ')).join('; ')));
+  }
   const table=(head,rows)=>h('div',{class:'scroll',style:'margin-bottom:12px'},h('table',{class:'t'},h('thead',{},h('tr',{},head.map(x=>h('th',{},x)))),h('tbody',{},rows)));
   const sub=t=>h('h3',{style:'margin:12px 0 6px;font-size:14px'},t);
   if(P.auto.length||P.lineAuto.length){
@@ -1000,8 +1047,12 @@ async function runImport(){
     msg.textContent='Đang gửi '+ready.length+' file qua worker tới '+(($('#iProv').selectedOptions[0]||{}).textContent||'AI')+'…';
     const raw=await callAI(prompt,prov,{attachments:atts,json:true,maxTokens:12000,timeoutMs:240000});
     const data=extractJSON(raw);
-    if($('#iAttach').checked)addFiles(ready.map(x=>x.file));
+    const hintMap={};
+    ready.forEach(x=>{if(x.hints&&x.hints.length)hintMap[x.name]=x.hints[0]});
+    if($('#iAttach').checked)addFiles(ready.map(x=>x.file),hintMap);
     const P=buildPlan(data);
+    // bổ sung loại chứng từ nhận diện từ tên sheet và nội dung (mỗi loại một phần tử, kể cả khi cùng một file)
+    ready.forEach(x=>(x.hints||[]).forEach(i=>{if(!P.docs.some(d=>d.file===x.name&&d.idx===i))P.docs.push({file:x.name,idx:i})}));
     applyFields(P.auto);
     if(P.lineAuto.length)applyLines(P.lineAuto,true);
     applyDocs(P.docs);
@@ -1122,12 +1173,14 @@ async function buildPdf(){
       table({head:[head],body:body,columnStyles:cs,theme:'grid'});
       if(anyAI){y-=2;doc.setFont('BVP','normal');doc.setFontSize(8);doc.setTextColor(MUT[0],MUT[1],MUT[2]);doc.text('* Dòng có dữ liệu do AI điền từ chứng từ, cần đối chiếu với chứng từ gốc.',M,y);y+=22}
       heading('Tổng hợp tạm tính');
+      const nr=!c.ty&&c.tot>0,mny=v=>nr?'Chưa tính':fmtN(v);
       const sum=[['Tổng trị giá hóa đơn',fmtN(c.tot,2)+' '+(f.mt||'')]];
+      if(nr)sum.push(['Lưu ý','Chưa nhập tỷ giá tính thuế nên chưa tính được trị giá tính thuế và thuế']);
       if(imp)sum.push(['Phí vận tải, bảo hiểm và điều chỉnh (ngoại tệ)',fmtN(c.fees,2)]);
-      sum.push(['Tổng trị giá tính thuế (VND)',fmtN(c.base)]);
-      sum.push([imp?'Thuế nhập khẩu (VND)':'Thuế xuất khẩu (VND)',fmtN(c.s1)]);
-      if(imp)sum.push(['Thuế GTGT (VND)',fmtN(c.s2)]);
-      sum.push(['Tổng thuế tạm tính (VND)',fmtN(c.s1+c.s2)]);
+      sum.push(['Tổng trị giá tính thuế (VND)',mny(c.base)]);
+      sum.push([imp?'Thuế nhập khẩu (VND)':'Thuế xuất khẩu (VND)',mny(c.s1)]);
+      if(imp)sum.push(['Thuế GTGT (VND)',mny(c.s2)]);
+      sum.push(['Tổng thuế tạm tính (VND)',mny(c.s1+c.s2)]);
       table({body:sum,columnStyles:{0:{cellWidth:300,fontStyle:'bold',fillColor:LABEL,textColor:MUT},1:{cellWidth:200,halign:'right'}},theme:'grid',margin:{left:M,right:W-M-500,top:M+10,bottom:M+22}});
       y-=2;doc.setFont('BVP','normal');doc.setFontSize(8);doc.setTextColor(MUT[0],MUT[1],MUT[2]);
       doc.text('Số thuế chỉ là ước tính để đối chiếu, chưa gồm thuế tiêu thụ đặc biệt, bảo vệ môi trường, chống bán phá giá... Số chính thức do hệ thống hải quan tính.',M,y);y+=24;
