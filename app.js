@@ -1102,7 +1102,7 @@ async function buildPdf(){
   await loadLib('autotable');
   const FN=await loadFonts();
   syncStoreFromForm();
-  const s=st(),imp=mode==='IDA',f=s.f,c=calc(),ai=s.ai||{};
+  const s=st(),imp=mode==='IDA',f=s.f,c=calc();
   const doc=new J({orientation:'landscape',unit:'pt',format:'a4',compress:true});
   doc.addFileToVFS('BVP-Regular.ttf',FN.regular);doc.addFont('BVP-Regular.ttf','BVP','normal');
   doc.addFileToVFS('BVP-Bold.ttf',FN.bold);doc.addFont('BVP-Bold.ttf','BVP','bold');
@@ -1132,7 +1132,7 @@ async function buildPdf(){
     let v=fd.computed?(c.tot?fmtN(c.tot,2)+' '+(f.mt||''):''):String(f[fd.k]==null?'':f[fd.k]).trim();
     if(v&&!fd.computed)v=optLabel(fd,v);
     if(!v)return EMPTY;
-    return ai['f-'+fd.k]?v+'  [AI]':v;
+    return v;
   };
   const kvRows=fields=>{
     const rows=[];let pend=null;
@@ -1157,13 +1157,10 @@ async function buildPdf(){
       heading('Danh sách hàng ('+s.lines.length+' dòng)');
       const head=imp?['STT','Mã HS','Mô tả hàng hóa','Xuất xứ','Số lượng','ĐVT','Đơn giá','Trị giá HĐ','Thuế NK %','GTGT %','Thuế NK (VND)','GTGT (VND)']
                     :['STT','Mã HS','Mô tả hàng hóa','Số lượng','ĐVT','Đơn giá','Trị giá HĐ','Thuế XK %','Thuế XK (VND)'];
-      let anyAI=false;
       const body=s.lines.map((l,i)=>{
-        const mark=Object.keys(ai).some(k=>k.indexOf('l-'+i+'-')===0);
-        if(mark)anyAI=true;
         const r=imp?[l.hs,l.mota,l.xx,l.sl,l.dv,l.dg,l.tt?fmtN(l.tt,2):'',l.ts,l.vat,l.base?fmtN(l.t1):'',l.base?fmtN(l.t2):'']
                    :[l.hs,l.mota,l.sl,l.dv,l.dg,l.tt?fmtN(l.tt,2):'',l.ts,l.base?fmtN(l.t1):''];
-        return [(i+1)+(mark?' *':'')].concat(r.map(num2));
+        return [String(i+1)].concat(r.map(num2));
       });
       const right=imp?[4,6,7,8,9,10,11]:[3,5,6,7,8];
       const W1=imp?[28,58,'auto',38,46,34,44,62,46,42,70,66]:[28,58,'auto',46,34,44,62,46,70];
@@ -1171,7 +1168,6 @@ async function buildPdf(){
       W1.forEach((w,i)=>{cs[i]={cellWidth:w}});
       right.forEach(i=>{cs[i].halign='right'});
       table({head:[head],body:body,columnStyles:cs,theme:'grid'});
-      if(anyAI){y-=2;doc.setFont('BVP','normal');doc.setFontSize(8);doc.setTextColor(MUT[0],MUT[1],MUT[2]);doc.text('* Dòng có dữ liệu do AI điền từ chứng từ, cần đối chiếu với chứng từ gốc.',M,y);y+=22}
       heading('Tổng hợp tạm tính');
       const nr=!c.ty&&c.tot>0,mny=v=>nr?'Chưa tính':fmtN(v);
       const sum=[['Tổng trị giá hóa đơn',fmtN(c.tot,2)+' '+(f.mt||'')]];
